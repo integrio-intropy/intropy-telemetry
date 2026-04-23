@@ -12,8 +12,8 @@
     <Company>Integrio</Company>
     <Copyright>Copyright (c) 2026 Integrio</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/integrio-intropy/intropy-libs-telemetry</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/integrio-intropy/intropy-libs-telemetry</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/integrio-intropy/intropy-telemetry</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/integrio-intropy/intropy-telemetry</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>opentelemetry;telemetry;intropy</PackageTags>
   </PropertyGroup>
