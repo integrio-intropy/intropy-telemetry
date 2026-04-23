@@ -1,0 +1,10 @@
+<Solution>
+    <Folder Name="/AspNetCore/">
+        <Project Path="src/Intropy.Telemetry.AspNetCore/Intropy.Telemetry.AspNetCore.csproj"/>
+        <Project Path="test/Intropy.Telemetry.AspNetCore/Intropy.Telemetry.AspNetCore.Test.csproj"/>
+    </Folder>
+    <Folder Name="/ConsoleApp/">
+        <Project Path="src/Intropy.Telemetry.ConsoleApp/Intropy.Telemetry.ConsoleApp.csproj"/>
+        <Project Path="test/Intropy.Telemetry.ConsoleApp/Intropy.Telemetry.ConsoleApp.Test.csproj"/>
+    </Folder>
+</Solution>

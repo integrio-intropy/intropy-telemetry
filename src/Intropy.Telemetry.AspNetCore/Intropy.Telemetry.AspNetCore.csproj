@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <PackageId>Intropy.Telemetry.AspNetCore</PackageId>
+        <Description>Simplified OpenTelemetry configuration for ASP.NET Core applications with pre-configured tracing, metrics, and logging via OTLP.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="OpenTelemetry" Version="1.15.3"/>
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3"/>
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.15.1-beta.1"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.15.2"/>
+    </ItemGroup>
+
+</Project>
