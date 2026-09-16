@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Intropy.Telemetry.AspNetCore\Intropy.Telemetry.AspNetCore.csproj" />
+        <ProjectReference Include="..\..\src\Intropy.Telemetry\Intropy.Telemetry.csproj" />
     </ItemGroup>
 
 </Project>
