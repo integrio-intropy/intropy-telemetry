@@ -9,6 +9,9 @@ This library provides two NuGet packages that wrap the OpenTelemetry SDK with se
 - **Intropy.Telemetry.AspNetCore** — for ASP.NET Core web applications
 - **Intropy.Telemetry.ConsoleApp** — for console applications and background workers
 
+Both are thin platform-specific layers over a third package, **Intropy.Telemetry**, which holds the shared
+configuration and wiring. It is pulled in automatically as a dependency, you never reference it directly.
+
 Both packages configure tracing, metrics, and logging with OTLP export out of the box. The ASP.NET Core package additionally includes HTTP request instrumentation, health check filtering, and ASP.NET Core metrics.
 
 ## Installation
@@ -79,7 +82,8 @@ Both packages use `OpenTelemetryConfiguration` with the same base properties:
 | `Environment` | `string` | Yes | `""` | Environment name, e.g. `"Production"`, `"Staging"` |
 | `ServiceNamespace` | `string` | No | `""` | Namespace or organization, e.g. `"mycompany"` |
 | `ServiceVersion` | `string` | No | Assembly version | Service version. Defaults to the executing assembly's version. |
-| `ConfigureTracing` | `Action<TracerProviderBuilder>?` | No | `null` | Callback to add custom trace sources or instrumentations |
+| `Sources` | `IList<string>` | No | `Intropy.*`, `Azure.*` | Trace sources to listen to, plus `ServiceName`. Extendable and trimmable from the `Tracing` config section |
+| `ConfigureTracing` | `Action<TracerProviderBuilder>?` | No | `null` | Callback to add custom instrumentations, processors or samplers |
 | `ConfigureMetrics` | `Action<MeterProviderBuilder>?` | No | `null` | Callback to add custom meters |
 | `ConfigureLogging` | `Action<LoggerProviderBuilder>?` | No | `null` | Callback for additional logging configuration |
 | `ConfigureResource` | `Action<ResourceBuilder>?` | No | `null` | Callback to add custom resource attributes |
@@ -116,7 +120,9 @@ The ASP.NET Core package adds one additional property:
 | Metrics | HTTP client metrics |
 | Logging | OTLP export of structured logs |
 
-Both packages automatically register trace sources for `Azure.*` and `Intropy.*` patterns, along with the configured `ServiceName`.
+Both packages register trace sources for the `Azure.*` and `Intropy.*` patterns by default, along with the
+configured `ServiceName`. See [Controlling Trace Sources](#controlling-trace-sources) to change that list
+from configuration.
 
 ## Examples
 
@@ -134,11 +140,8 @@ builder.Services.AddOpenTelemetry(config =>
     config.Environment = "Production";
     config.ServiceVersion = "2.1.0";
 
-    // Add custom trace sources
-    config.ConfigureTracing = tracing =>
-    {
-        tracing.AddSource("MyCustomActivitySource");
-    };
+    // Add custom trace sources — also overridable from the "Tracing" config section
+    config.Sources.Add("MyCustomActivitySource");
 
     // Add custom meters
     config.ConfigureMetrics = metrics =>
@@ -167,7 +170,7 @@ app.Run();
 
 ### Custom Activity Spans
 
-Create manual spans using the standard `System.Diagnostics` API. Make sure the `ActivitySource` name matches your `ServiceName` or is added via `ConfigureTracing`:
+Create manual spans using the standard `System.Diagnostics` API. Make sure the `ActivitySource` name matches your `ServiceName`, one of the default patterns, or is added via `config.Sources`:
 
 ```csharp
 using System.Diagnostics;
@@ -215,6 +218,55 @@ public void OnOrderPlaced(Order order)
     OrdersPlaced.Add(1, new KeyValuePair<string, object?>("order.type", order.Type));
 }
 ```
+
+## Controlling Trace Sources
+
+By default both packages listen to the configured `ServiceName` plus the `Intropy.*` and `Azure.*`
+wildcards. That list lives in `config.Sources` and can be changed from `appsettings.json` without a code
+change, which is the point: when a deployed service turns out to be missing a source, or one of them
+floods your backend, you change configuration and restart rather than cutting a new release.
+
+```json
+{
+  "Tracing": {
+    "Sources": [ "MyCustomActivitySource", "SomeVendor.Sdk" ],
+    "DisabledSources": [ "Azure.*" ]
+  }
+}
+```
+
+`Sources` adds to the list; `DisabledSources` removes from it and is applied last, so configuration always
+wins over code. The same list is available in code:
+
+```csharp
+config.Sources.Add("MyCustomActivitySource");
+config.Sources.Remove("Azure.*");
+```
+
+Overrides work as environment variables too:
+
+```bash
+Tracing__DisabledSources__0=Azure.*
+```
+
+### Limitations worth knowing about
+
+**`DisabledSources` matches entries exactly, not as wildcards.** `"Azure.*"` removes the default because
+that is the literal string registered by default. But with `Azure.*` registered, disabling
+`Azure.Storage` does nothing — the OpenTelemetry SDK matches wildcards when deciding which sources to
+listen to and offers no way to carve out an exception. Entries that match nothing are logged as a warning
+at start-up rather than failing silently.
+
+**Sources added via `ConfigureTracing` cannot be controlled from configuration.** `TracerProviderBuilder`
+has no API to remove a source once added, so anything registered as:
+
+```csharp
+config.ConfigureTracing = tracing => tracing.AddSource("MyCustomActivitySource"); // not configurable
+```
+
+is fixed at compile time. Declare it in `config.Sources` instead. `ConfigureTracing` remains the right
+place for processors, samplers and extra instrumentations.
+
 
 ## Environment Variables
 
