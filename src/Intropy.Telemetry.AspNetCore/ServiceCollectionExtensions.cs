@@ -1,10 +1,5 @@
-using System.Diagnostics;
-using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using OpenTelemetry;
-using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 namespace Intropy.Telemetry.AspNetCore;
@@ -38,7 +33,9 @@ public static class ServiceCollectionExtensions
     ///             <description>OTLP exporters for traces, metrics, and logs</description>
     ///         </item>
     ///     </list>
-    ///     The method automatically adds tracing sources for the configured service name, Azure.*, and Intropy.* patterns.
+    ///     Tracing sources default to the configured service name plus the Azure.* and Intropy.* patterns.
+    ///     That list can be extended and trimmed from the <c>Tracing</c> configuration section without a
+    ///     code change - see <see cref="TracingOptions" />.
     /// </remarks>
     /// <example>
     ///     <code>
@@ -46,7 +43,7 @@ public static class ServiceCollectionExtensions
     /// {
     ///     config.ServiceName = "MyService.API";
     ///     config.Environment = "Production";
-    ///     config.ConfigureTracing = tracing => tracing.AddSource("CustomSource");
+    ///     config.Sources.Add("CustomSource");
     /// });
     /// </code>
     /// </example>
@@ -57,97 +54,20 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configure);
         configure(telemetryConfig);
 
-        services.AddOpenTelemetry()
-            .ConfigureResources(telemetryConfig)
-            .ConfigureTracing(telemetryConfig)
-            .ConfigureMetrics(telemetryConfig)
-            .ConfigureLogging(telemetryConfig);
-    }
-
-    extension(OpenTelemetryBuilder builder)
-    {
-        private OpenTelemetryBuilder ConfigureResources(OpenTelemetryConfiguration config)
-        {
-            return builder.ConfigureResource(resource =>
-            {
-                resource.AddService(config.ServiceName,
-                        config.ServiceNamespace,
-                        Assembly.GetExecutingAssembly().GetName().Version!.ToString()
-                    )
-                    .AddAttributes([
-                        new KeyValuePair<string, object>("environment", config.Environment),
-                        new KeyValuePair<string, object>("service.version", config.ServiceVersion)
-                    ]);
-
-                // Apply user configuration
-                config.ConfigureResource?.Invoke(resource);
-            });
-        }
-
-        private OpenTelemetryBuilder ConfigureTracing(OpenTelemetryConfiguration config)
-        {
-            return builder.WithTracing(tracing =>
-            {
-                // Add the main service source
-                tracing.AddSource(config.ServiceName);
-
-                // Add default sources
-                tracing.AddSource("Azure.*")
-                    .AddSource("Intropy.*")
-                    .SetSampler(new AlwaysOnSampler())
-                    .AddAspNetCoreInstrumentation(options =>
-                        {
-                            options.RecordException = true;
-                            options.Filter = config.FilterHttpRequest;
-                            options.EnrichWithException = (activity, exception) =>
-                            {
-                                activity.SetTag("exception.type", exception.GetType().FullName);
-                                activity.SetTag("exception.message", exception.Message);
-                                activity.SetTag("exception.stacktrace", exception.StackTrace);
-                            };
-                        }
-                    )
-                    .AddSqlClientInstrumentation(options => { options.RecordException = true; })
-                    .AddHttpClientInstrumentation(options =>
+        services.AddTelemetry(
+            telemetryConfig,
+            tracing => tracing.AddAspNetCoreInstrumentation(options =>
+                {
+                    options.RecordException = true;
+                    options.Filter = telemetryConfig.FilterHttpRequest;
+                    options.EnrichWithException = (activity, exception) =>
                     {
-                        options.FilterHttpRequestMessage =
-                            _ => Activity.Current?.Parent?.Source.Name != "Azure.Core.Http";
-                        options.RecordException = true;
-                        options.EnrichWithException = (activity, exception) =>
-                        {
-                            activity.SetTag("error.type", exception.GetType().FullName);
-                            activity.SetTag("error.msg", exception.Message);
-                        };
-                    })
-                    .AddGrpcClientInstrumentation(options => { options.SuppressDownstreamInstrumentation = false; });
-
-                tracing.AddOtlpExporter();
-
-                // Apply user configuration
-                config.ConfigureTracing?.Invoke(tracing);
-            });
-        }
-
-        private OpenTelemetryBuilder ConfigureMetrics(OpenTelemetryConfiguration config)
-        {
-            return builder.WithMetrics(metrics =>
-            {
-                metrics.AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddOtlpExporter();
-
-                config.ConfigureMetrics?.Invoke(metrics);
-            });
-        }
-
-        private void ConfigureLogging(OpenTelemetryConfiguration config)
-        {
-            builder.WithLogging(logging =>
-            {
-                logging.AddOtlpExporter();
-
-                config.ConfigureLogging?.Invoke(logging);
-            });
-        }
+                        activity.SetTag("exception.type", exception.GetType().FullName);
+                        activity.SetTag("exception.message", exception.Message);
+                        activity.SetTag("exception.stacktrace", exception.StackTrace);
+                    };
+                }
+            ),
+            metrics => metrics.AddAspNetCoreInstrumentation());
     }
 }
