@@ -19,4 +19,26 @@ internal static partial class TracingLog
         int unmatchedCount,
         string unmatchedSources,
         string registeredSources);
+
+    [LoggerMessage(
+        EventId = 1001,
+        Level = LogLevel.Information,
+        Message = "Tracing mode is {Mode}. Registered trace sources: {RegisteredSources}.")]
+    public static partial void ResolvedTracingMode(ILogger logger, TracingMode mode, string registeredSources);
+
+    [LoggerMessage(
+        EventId = 1003,
+        Level = LogLevel.Information,
+        Message = "Strict tracing mode: spans from every other source are dropped before export, " +
+                  "including the built-in ASP.NET Core, HttpClient, SqlClient and gRPC instrumentation. " +
+                  "Spans that do survive can appear in the backend as roots with no parent.")]
+    public static partial void StrictModeDropsOtherSources(ILogger logger);
+
+    [LoggerMessage(
+        EventId = 1002,
+        Level = LogLevel.Warning,
+        Message = "Tracing:Sources contains {IgnoredCount} entry/entries that had no effect because " +
+                  "Tracing mode is Strict: {IgnoredSources}. Strict mode registers a fixed allowlist of " +
+                  "'Intropy.*' plus the service name. Switch to Open mode to listen to these sources.")]
+    public static partial void IgnoredConfiguredSources(ILogger logger, int ignoredCount, string ignoredSources);
 }

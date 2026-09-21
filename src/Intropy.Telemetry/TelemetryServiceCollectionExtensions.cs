@@ -36,6 +36,8 @@ internal static class TelemetryServiceCollectionExtensions
         Action<TracerProviderBuilder>? platformTracing = null,
         Action<MeterProviderBuilder>? platformMetrics = null)
     {
+        // Must stay ahead of ConfigureTracing: the strict-mode source filter it registers only drops
+        // spans from processors added after it, and the exporters are added there.
         services.AddTracingSources(config);
 
         services.AddOpenTelemetry()
@@ -144,18 +146,38 @@ internal static class TelemetryServiceCollectionExtensions
         services.ConfigureOpenTelemetryTracerProvider((serviceProvider, tracing) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<TracingOptions>>().Value;
-            var resolution = TracingSourceResolver.Resolve(config.Sources, config.ServiceName, options);
+            var resolution = TracingSourceResolver.Resolve(config, options);
 
             tracing.AddSource([.. resolution.Sources]);
 
-            if (resolution.UnmatchedDisabledSources.Count == 0)
+            if (resolution.Mode is TracingMode.Strict)
             {
-                return;
+                tracing.AddProcessor(new StrictSourceFilterProcessor(resolution.Sources));
             }
 
             var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("Intropy.Telemetry");
 
-            if (logger is not null)
+            if (logger is null)
+            {
+                return;
+            }
+
+            TracingLog.ResolvedTracingMode(logger, resolution.Mode, string.Join(", ", resolution.Sources));
+
+            if (resolution.Mode is TracingMode.Strict)
+            {
+                TracingLog.StrictModeDropsOtherSources(logger);
+            }
+
+            if (resolution.IgnoredConfiguredSources.Count > 0)
+            {
+                TracingLog.IgnoredConfiguredSources(
+                    logger,
+                    resolution.IgnoredConfiguredSources.Count,
+                    string.Join(", ", resolution.IgnoredConfiguredSources));
+            }
+
+            if (resolution.UnmatchedDisabledSources.Count > 0)
             {
                 TracingLog.UnmatchedDisabledSources(
                     logger,
