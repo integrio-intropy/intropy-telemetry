@@ -82,7 +82,8 @@ Both packages use `OpenTelemetryConfiguration` with the same base properties:
 | `Environment` | `string` | Yes | `""` | Environment name, e.g. `"Production"`, `"Staging"` |
 | `ServiceNamespace` | `string` | No | `""` | Namespace or organization, e.g. `"mycompany"` |
 | `ServiceVersion` | `string` | No | Assembly version | Service version. Defaults to the executing assembly's version. |
-| `Sources` | `IList<string>` | No | `Intropy.*`, `Azure.*` | Trace sources to listen to, plus `ServiceName`. Extendable and trimmable from the `Tracing` config section |
+| `Mode` | `TracingMode` | No | `Open` | How much of the configured tracing is emitted. `Open` emits everything; `Strict` emits only `Intropy.*` and `ServiceName`. Overridable from the `Tracing` config section |
+| `Sources` | `IList<string>` | No | `Intropy.*`, `Azure.*` | Trace sources to listen to, plus `ServiceName`. Extendable and trimmable from the `Tracing` config section. Ignored in `Strict` mode |
 | `ConfigureTracing` | `Action<TracerProviderBuilder>?` | No | `null` | Callback to add custom instrumentations, processors or samplers |
 | `ConfigureMetrics` | `Action<MeterProviderBuilder>?` | No | `null` | Callback to add custom meters |
 | `ConfigureLogging` | `Action<LoggerProviderBuilder>?` | No | `null` | Callback for additional logging configuration |
@@ -229,6 +230,7 @@ floods your backend, you change configuration and restart rather than cutting a 
 ```json
 {
   "Tracing": {
+    "Mode": "Open",
     "Sources": [ "MyCustomActivitySource", "SomeVendor.Sdk" ],
     "DisabledSources": [ "Azure.*" ]
   }
@@ -236,7 +238,7 @@ floods your backend, you change configuration and restart rather than cutting a 
 ```
 
 `Sources` adds to the list; `DisabledSources` removes from it and is applied last, so configuration always
-wins over code. The same list is available in code:
+wins over code. `Mode` is covered below. The same list is available in code:
 
 ```csharp
 config.Sources.Add("MyCustomActivitySource");
@@ -249,7 +251,60 @@ Overrides work as environment variables too:
 Tracing__DisabledSources__0=Azure.*
 ```
 
+### Tracing modes
+
+`Mode` decides how much of that configuration actually leaves the process. It defaults to `Open`, so
+upgrading changes nothing for an existing service.
+
+| Mode | What is emitted |
+|------|-----------------|
+| `Open` | Everything configured: `config.Sources`, `Tracing:Sources`, and the built-in ASP.NET Core, HttpClient, SqlClient and gRPC instrumentation |
+| `Strict` | Only `Intropy.*` and the exact `ServiceName`. Everything else is dropped, including all built-in instrumentation |
+
+`Strict` is the switch to reach for when a service should report its own work and nothing else —
+no vendor SDK chatter, no per-query SQL spans, no cost for traces nobody reads. It is an allowlist, so
+it needs no knowledge of what a dependency might start emitting after its next upgrade.
+
+```json
+{
+  "Tracing": {
+    "Mode": "Strict"
+  }
+}
+```
+
+In code, and as an environment variable:
+
+```csharp
+config.Mode = TracingMode.Strict;
+```
+
+```bash
+Tracing__Mode=Strict
+```
+
+Configuration wins over code, as it does for `Sources`. The value is matched case-insensitively, so
+`"strict"` and `"Strict"` both work, and an unrecognised value fails at start-up with a
+`Failed to convert configuration value … at 'Tracing:Mode'` error rather than quietly falling back to
+`Open`. The mode and the resolved source list are logged at `Information` on start-up, which is the
+first place to look when spans go missing.
+
+The instrumentation stays registered in `Strict` mode and its spans are dropped on the way to the
+exporter, rather than never being created. That is deliberate: it keeps `traceparent` propagation to
+downstream services working, so a strict service does not break the traces of the services it calls.
+
 ### Limitations worth knowing about
+
+**`Strict` matches `ServiceName` exactly.** With `ServiceName = "Orders.API"`, a source named
+`Orders.API.Repository` is dropped — only `Intropy.*` is treated as a wildcard. There is no way to add
+it back, because `Tracing:Sources` is ignored in this mode. Either name the `ActivitySource` exactly
+`ServiceName` as recommended above, prefix it with `Intropy.`, or stay on `Open`. Entries in
+`Tracing:Sources` that this affects are logged as a warning at start-up; sources added in code are not,
+so check the registered source list in the start-up log if spans are missing.
+
+**`Strict` drops the spans that surround yours.** With the ASP.NET Core and HttpClient spans gone, the
+spans that survive can appear in your backend as roots with no parent. This is the cost of the mode,
+not a bug.
 
 **`DisabledSources` matches entries exactly, not as wildcards.** `"Azure.*"` removes the default because
 that is the literal string registered by default. But with `Azure.*` registered, disabling

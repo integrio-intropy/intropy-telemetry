@@ -55,6 +55,18 @@ public abstract class TelemetryConfiguration
     public string Environment { get; set; } = "";
 
     /// <summary>
+    /// How much of the configured tracing is actually emitted. Defaults to
+    /// <see cref="TracingMode.Open" />.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TracingMode.Strict" /> replaces <see cref="Sources" /> with a fixed allowlist of
+    /// <c>Intropy.*</c> plus <see cref="ServiceName" />, and drops the spans produced by the built-in
+    /// instrumentation. Overridable from the <c>Tracing</c> configuration section - see
+    /// <see cref="TracingOptions.Mode" />.
+    /// </remarks>
+    public TracingMode Mode { get; set; } = TracingMode.Open;
+
+    /// <summary>
     /// The trace sources to listen to, pre-seeded with the built-in defaults.
     /// </summary>
     /// <remarks>
@@ -62,6 +74,10 @@ public abstract class TelemetryConfiguration
     /// Add an entry to listen to another source, or remove one to opt out of a default. The
     /// configured <see cref="ServiceName" /> is appended automatically. Entries may contain the
     /// <c>*</c> and <c>?</c> wildcards supported by the OpenTelemetry SDK.
+    /// </para>
+    /// <para>
+    /// This list is ignored entirely in <see cref="TracingMode.Strict" />, which registers a fixed
+    /// allowlist instead.
     /// </para>
     /// <para>
     /// This list can be extended and trimmed from the <c>Tracing</c> configuration section without

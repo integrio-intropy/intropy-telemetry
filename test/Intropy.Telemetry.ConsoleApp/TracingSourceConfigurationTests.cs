@@ -16,6 +16,9 @@ public class TracingSourceConfigurationTests
     {
         private readonly List<string> _spans = [];
 
+        private readonly List<string> _exported = [];
+
+        /// <summary>Every span that reached this processor, whether or not it will be exported.</summary>
         public IReadOnlyList<string> Spans
         {
             get
@@ -27,11 +30,30 @@ public class TracingSourceConfigurationTests
             }
         }
 
+        /// <summary>
+        /// Only the spans still flagged as recorded. Strict mode drops spans by clearing that flag.
+        /// </summary>
+        public IReadOnlyList<string> ExportedSpans
+        {
+            get
+            {
+                lock (_spans)
+                {
+                    return [.. _exported];
+                }
+            }
+        }
+
         public override void OnEnd(Activity data)
         {
             lock (_spans)
             {
                 _spans.Add(data.Source.Name);
+
+                if (data.Recorded)
+                {
+                    _exported.Add(data.Source.Name);
+                }
             }
         }
     }
@@ -55,7 +77,7 @@ public class TracingSourceConfigurationTests
         return (services.BuildServiceProvider().GetRequiredService<TracerProvider>(), processor);
     }
 
-    private static IReadOnlyList<string> RecordSpanFrom(
+    private static RecordingProcessor RecordSpanFrom(
         string sourceName,
         Dictionary<string, string?> settings)
     {
@@ -69,7 +91,7 @@ public class TracingSourceConfigurationTests
             }
         }
 
-        return processor.Spans;
+        return processor;
     }
 
     [Fact]
@@ -82,7 +104,7 @@ public class TracingSourceConfigurationTests
             ["Tracing:Sources:0"] = sourceName
         });
 
-        Assert.Contains(sourceName, spans);
+        Assert.Contains(sourceName, spans.Spans);
     }
 
     [Fact]
@@ -95,6 +117,31 @@ public class TracingSourceConfigurationTests
             ["Tracing:DisabledSources:0"] = "Intropy.*"
         });
 
-        Assert.DoesNotContain(sourceName, spans);
+        Assert.DoesNotContain(sourceName, spans.Spans);
+    }
+
+    [Fact]
+    public void StrictModeThroughConfiguration_DropsInstrumentationSpans()
+    {
+        var recorded = RecordSpanFrom("System.Net.Http", new Dictionary<string, string?>
+        {
+            ["Tracing:Mode"] = "Strict"
+        });
+
+        Assert.Contains("System.Net.Http", recorded.Spans);
+        Assert.DoesNotContain("System.Net.Http", recorded.ExportedSpans);
+    }
+
+    [Fact]
+    public void StrictModeThroughConfiguration_StillExportsIntropySpans()
+    {
+        var sourceName = $"Intropy.{Guid.NewGuid():N}";
+
+        var recorded = RecordSpanFrom(sourceName, new Dictionary<string, string?>
+        {
+            ["Tracing:Mode"] = "Strict"
+        });
+
+        Assert.Contains(sourceName, recorded.ExportedSpans);
     }
 }

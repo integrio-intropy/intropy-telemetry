@@ -31,6 +31,10 @@ public static class ServiceCollectionExtensions
     /// Tracing sources default to the configured service name plus the Azure.* and Intropy.* patterns.
     /// That list can be extended and trimmed from the <c>Tracing</c> configuration section without a
     /// code change - see <see cref="TracingOptions" />.
+    /// <para>
+    /// Set <see cref="TelemetryConfiguration.Mode" /> to <see cref="TracingMode.Strict" /> to emit only
+    /// Intropy.* and the service name, dropping the instrumentation above along with every other source.
+    /// </para>
     /// </remarks>
     /// <example>
     /// <code>
